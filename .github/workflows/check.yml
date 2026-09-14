@@ -1,26 +1,28 @@
-name: Перевірка нагадувань і сповіщення в Telegram
+name: Check reminders and notify
 
 on:
   schedule:
-    # Кожні 5 хвилин (UTC). GitHub може запускати з невеликою затримкою.
-    - cron: "*/5 * * * *"
-  workflow_dispatch: {}   # дозволяє запустити вручну з вкладки Actions
+    # GitHub Actions cron runs in UTC. Every 5 minutes (GitHub's minimum granularity).
+    - cron: '*/5 * * * *'
+  workflow_dispatch: {}  # lets you run it manually from the Actions tab to test
 
 jobs:
   check:
     runs-on: ubuntu-latest
+    env:
+      TZ: Europe/Warsaw
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: '3.11'
 
-      - name: Перевірити нагадування та надіслати в Telegram
+      - name: Run check
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          TIMEZONE: ${{ secrets.TIMEZONE }}
         run: python check_and_notify.py
