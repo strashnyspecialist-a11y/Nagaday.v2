@@ -1,0 +1,1364 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Нагадай — голосовий асистент нагадувань</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#12141e;
+    --bg-soft:#171a26;
+    --surface:#1c2030;
+    --surface-2:#242939;
+    --border:rgba(255,255,255,0.08);
+    --border-strong:rgba(255,255,255,0.14);
+    --text:#f1efe6;
+    --text-muted:#9397ab;
+    --text-dim:#61667a;
+    --accent:#e7b34c;
+    --accent-dim:rgba(231,179,76,0.16);
+    --accent-strong:#f3c467;
+    --danger:#d9645a;
+    --danger-dim:rgba(217,100,90,0.14);
+    --success:#6fbf8f;
+    --success-dim:rgba(111,191,143,0.14);
+    --radius-s:10px;
+    --radius-m:16px;
+    --radius-l:26px;
+    --shadow-deep:0 20px 50px rgba(0,0,0,0.45);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:radial-gradient(circle at 50% -10%, #1a1f30 0%, var(--bg) 55%);
+    color:var(--text);
+    font-family:'Inter',system-ui,sans-serif;
+    min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+  .app{
+    max-width:640px;
+    margin:0 auto;
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+    padding:0 18px 90px;
+  }
+  /* ---------- Topbar ---------- */
+  .topbar{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:22px 2px 8px;
+  }
+  .brand{display:flex;align-items:center;gap:10px;}
+  .brand-mark{
+    width:30px;height:30px;border-radius:50%;
+    background:conic-gradient(from 220deg, var(--accent), #6b5220, var(--accent));
+    display:inline-block;
+    box-shadow:0 0 0 1px var(--border-strong) inset;
+  }
+  .brand h1{
+    font-family:'Fraunces',serif;
+    font-weight:600;
+    font-size:22px;
+    letter-spacing:0.2px;
+    margin:0;
+  }
+  .icon-btn{
+    width:38px;height:38px;border-radius:50%;
+    background:var(--surface);
+    border:1px solid var(--border);
+    color:var(--text-muted);
+    font-size:17px;
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;
+    transition:background .15s, color .15s, transform .1s;
+  }
+  .icon-btn:hover{background:var(--surface-2);color:var(--text);}
+  .icon-btn:active{transform:scale(0.94);}
+
+  /* ---------- Hero ---------- */
+  .hero{
+    padding:18px 0 26px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    text-align:center;
+    border-bottom:1px solid var(--border);
+  }
+  .mic-btn{
+    position:relative;
+    width:116px;height:116px;
+    border-radius:50%;
+    border:none;
+    background:radial-gradient(circle at 35% 30%, #2c3145, #1a1e2c 70%);
+    box-shadow:0 0 0 1px var(--border-strong), var(--shadow-deep);
+    cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+    transition:transform .15s;
+  }
+  .mic-btn:active{transform:scale(0.96);}
+  .mic-btn svg{width:40px;height:40px;fill:none;stroke:var(--accent);stroke-width:1.6;transition:stroke .2s;}
+  .mic-btn.recording{
+    background:radial-gradient(circle at 35% 30%, #3a2430, #24151b 70%);
+    box-shadow:0 0 0 1px rgba(217,100,90,0.5), var(--shadow-deep);
+  }
+  .mic-btn.recording svg{stroke:var(--danger);}
+  .mic-btn.recording::before, .mic-btn.recording::after{
+    content:"";
+    position:absolute;inset:-8px;
+    border-radius:50%;
+    border:1.5px solid rgba(217,100,90,0.55);
+    animation:pulse-ring 1.8s ease-out infinite;
+  }
+  .mic-btn.recording::after{animation-delay:.6s;}
+  .mic-btn.processing{opacity:.7;pointer-events:none;}
+  .mic-btn.processing svg{stroke:var(--text-muted);}
+  @keyframes pulse-ring{
+    0%{transform:scale(0.9);opacity:.9;}
+    100%{transform:scale(1.5);opacity:0;}
+  }
+  .hero-status{
+    margin:18px 0 0;
+    font-size:14.5px;
+    color:var(--text-muted);
+    max-width:280px;
+    line-height:1.5;
+  }
+  .record-timer{
+    margin-top:10px;
+    font-family:'Fraunces',serif;
+    font-size:15px;
+    color:var(--danger);
+    letter-spacing:0.5px;
+  }
+  .hero-links{
+    margin-top:16px;
+    display:flex;
+    gap:14px;
+    font-size:13.5px;
+    color:var(--text-dim);
+  }
+  .link-btn{
+    background:none;border:none;color:inherit;
+    cursor:pointer;padding:4px 2px;
+    border-bottom:1px dashed var(--text-dim);
+  }
+  .link-btn:hover{color:var(--text-muted);border-color:var(--text-muted);}
+
+  .text-panel{
+    width:100%;max-width:420px;
+    margin-top:16px;
+    display:flex;flex-direction:column;gap:10px;
+  }
+  textarea, input[type=text], input[type=password], input[type=date], input[type=time], input[type=number], select{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius-s);
+    color:var(--text);
+    font-family:inherit;
+    font-size:14.5px;
+    padding:11px 13px;
+    outline:none;
+    width:100%;
+    transition:border-color .15s;
+  }
+  textarea{resize:vertical;min-height:64px;line-height:1.4;}
+  textarea:focus, input:focus, select:focus{border-color:var(--accent);}
+  .primary-btn{
+    background:var(--accent);
+    color:#241a05;
+    border:none;
+    font-weight:600;
+    font-size:14.5px;
+    padding:11px 16px;
+    border-radius:var(--radius-s);
+    cursor:pointer;
+    transition:filter .15s, transform .1s;
+  }
+  .primary-btn:hover{filter:brightness(1.08);}
+  .primary-btn:active{transform:scale(0.98);}
+  .primary-btn:disabled{opacity:.5;cursor:default;}
+  .ghost-btn{
+    background:transparent;
+    border:1px solid var(--border-strong);
+    color:var(--text-muted);
+    font-size:14px;
+    padding:10px 14px;
+    border-radius:var(--radius-s);
+    cursor:pointer;
+  }
+  .ghost-btn:hover{color:var(--text);border-color:var(--text-dim);}
+
+  /* ---------- Preview panel (AI results) ---------- */
+  .preview-panel{
+    margin-top:22px;
+    background:var(--surface);
+    border:1px solid var(--border-strong);
+    border-radius:var(--radius-m);
+    padding:16px;
+  }
+  .preview-panel h3{
+    font-family:'Fraunces',serif;
+    font-weight:500;
+    font-size:16px;
+    margin:0 0 4px;
+  }
+  .preview-sub{font-size:12.5px;color:var(--text-dim);margin:0 0 12px;}
+  .preview-item{
+    display:flex;align-items:flex-start;gap:10px;
+    padding:10px 0;
+    border-top:1px solid var(--border);
+  }
+  .preview-item:first-of-type{border-top:none;}
+  .preview-item input[type=checkbox]{margin-top:3px;accent-color:var(--accent);width:16px;height:16px;}
+  .preview-item .pi-title{font-size:14.5px;font-weight:500;}
+  .preview-item .pi-meta{font-size:12.5px;color:var(--text-muted);margin-top:2px;}
+  .preview-actions{display:flex;gap:10px;margin-top:14px;}
+
+  /* ---------- Reminders list ---------- */
+  .list-section{padding-top:22px;}
+  .group-label{
+    font-size:12px;
+    letter-spacing:.4px;
+    color:var(--text-dim);
+    margin:22px 0 10px;
+    padding-left:2px;
+  }
+  .group-label:first-child{margin-top:4px;}
+  .card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius-m);
+    padding:13px 14px;
+    display:flex;
+    gap:12px;
+    margin-bottom:9px;
+    align-items:flex-start;
+    transition:border-color .15s;
+  }
+  .card.overdue{border-color:rgba(217,100,90,0.35);}
+  .card.completed{opacity:.5;}
+  .check-circle{
+    width:22px;height:22px;border-radius:50%;
+    border:1.5px solid var(--text-dim);
+    flex:none;margin-top:1px;
+    cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+    color:transparent;
+    transition:all .15s;
+    font-size:13px;
+  }
+  .check-circle:hover{border-color:var(--accent);}
+  .card.completed .check-circle{background:var(--success);border-color:var(--success);color:#10241a;}
+  .card-body{flex:1;min-width:0;}
+  .card-title{
+    font-size:15px;font-weight:500;
+    line-height:1.35;
+    word-break:break-word;
+  }
+  .card.completed .card-title{text-decoration:line-through;text-decoration-color:var(--text-dim);}
+  .card-meta{
+    display:flex;flex-wrap:wrap;gap:6px;
+    margin-top:6px;
+  }
+  .tag{
+    font-size:11.5px;
+    padding:3px 8px;
+    border-radius:20px;
+    background:var(--surface-2);
+    color:var(--text-muted);
+  }
+  .tag.time{color:var(--accent-strong);background:var(--accent-dim);}
+  .tag.overdue-tag{color:var(--danger);background:var(--danger-dim);}
+  .card-note{font-size:12.5px;color:var(--text-dim);margin-top:6px;line-height:1.4;}
+  .card-actions{display:flex;gap:4px;flex:none;}
+  .mini-btn{
+    width:28px;height:28px;border-radius:8px;
+    border:none;background:transparent;color:var(--text-dim);
+    cursor:pointer;font-size:14px;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .mini-btn:hover{background:var(--surface-2);color:var(--text);}
+  .empty-state{
+    text-align:center;
+    padding:50px 20px;
+    color:var(--text-dim);
+    font-size:14px;
+    line-height:1.6;
+  }
+  .empty-state .em-mark{font-size:30px;display:block;margin-bottom:10px;}
+
+  .completed-toggle{
+    background:none;border:none;color:var(--text-dim);
+    font-size:12.5px;cursor:pointer;padding:8px 2px;
+    width:100%;text-align:left;
+  }
+  .completed-toggle:hover{color:var(--text-muted);}
+
+  .sync-status{
+    font-size:11.5px;color:var(--text-dim);
+    text-align:center;padding:6px 0 0;
+  }
+  .sync-status.err{color:var(--danger);}
+
+  /* ---------- Modal ---------- */
+  .modal-overlay{
+    position:fixed;inset:0;
+    background:rgba(8,9,14,0.72);
+    display:flex;align-items:flex-end;justify-content:center;
+    z-index:50;
+    backdrop-filter:blur(2px);
+  }
+  .modal-overlay.hidden{display:none;}
+  @media (min-width:560px){
+    .modal-overlay{align-items:center;}
+  }
+  .modal{
+    background:var(--bg-soft);
+    border:1px solid var(--border-strong);
+    border-radius:var(--radius-l) var(--radius-l) 0 0;
+    width:100%;max-width:480px;
+    max-height:88vh;
+    overflow-y:auto;
+    padding:22px 20px 26px;
+    box-shadow:var(--shadow-deep);
+  }
+  @media (min-width:560px){
+    .modal{border-radius:var(--radius-l);}
+  }
+  .modal h2{
+    font-family:'Fraunces',serif;
+    font-weight:600;
+    font-size:19px;margin:0 0 18px;
+  }
+  .field{margin-bottom:14px;}
+  .field label{
+    display:block;font-size:12.5px;color:var(--text-muted);
+    margin-bottom:6px;
+  }
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .day-picker{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;}
+  .day-chip{
+    width:36px;height:36px;border-radius:50%;
+    background:var(--surface);border:1px solid var(--border);
+    color:var(--text-muted);font-size:12px;
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;user-select:none;
+  }
+  .day-chip.active{background:var(--accent-dim);border-color:var(--accent);color:var(--accent-strong);}
+  .modal-actions{display:flex;gap:10px;margin-top:18px;}
+  .modal-actions .primary-btn, .modal-actions .ghost-btn{flex:1;}
+  .modal-hint{font-size:12px;color:var(--text-dim);margin:-6px 0 14px;line-height:1.5;}
+  .modal-close-x{
+    position:absolute;top:16px;right:16px;
+    background:none;border:none;color:var(--text-dim);
+    font-size:18px;cursor:pointer;
+  }
+  .modal-inner-wrap{position:relative;}
+  .password-row{display:flex;gap:8px;}
+  .password-row input{flex:1;}
+
+  /* ---------- Toast ---------- */
+  .toast-root{
+    position:fixed;bottom:18px;left:0;right:0;
+    display:flex;flex-direction:column;align-items:center;gap:8px;
+    z-index:60;pointer-events:none;
+  }
+  .toast{
+    background:var(--surface-2);
+    border:1px solid var(--border-strong);
+    color:var(--text);
+    padding:11px 18px;
+    border-radius:30px;
+    font-size:13.5px;
+    box-shadow:0 10px 30px rgba(0,0,0,0.4);
+    animation:toast-in .25s ease-out;
+  }
+  @keyframes toast-in{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
+
+  .hidden{display:none !important;}
+  ::selection{background:var(--accent-dim);}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark"></span>
+      <h1>Нагадай</h1>
+    </div>
+    <button class="icon-btn" id="settingsBtn" title="Налаштування" aria-label="Налаштування">⚙</button>
+  </header>
+
+  <section class="hero">
+    <button class="mic-btn" id="micBtn" aria-label="Записати голосове нагадування">
+      <svg id="micIcon" viewBox="0 0 24 24"><path d="M12 15a3.5 3.5 0 0 0 3.5-3.5V6.5a3.5 3.5 0 0 0-7 0v5A3.5 3.5 0 0 0 12 15z" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 11v.5a6 6 0 0 0 12 0V11M12 18.5V21" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <p class="hero-status" id="heroStatus">Натисни й скажи, що і коли нагадати</p>
+    <div class="record-timer hidden" id="recordTimer">00:00</div>
+
+    <div class="hero-links" id="heroLinks">
+      <button class="link-btn" id="toggleTextBtn">написати текстом</button>
+      <button class="link-btn" id="openManualBtn">додати вручну</button>
+    </div>
+
+    <div class="text-panel hidden" id="textPanel">
+      <textarea id="textInput" placeholder="Напр.: нагадай завтра о 9 ранку зателефонувати клієнту, і ще щопонеділка о 10 — планування тижня"></textarea>
+      <button class="primary-btn" id="textParseBtn">Розпізнати з AI</button>
+    </div>
+  </section>
+
+  <section class="list-section">
+    <div class="preview-panel hidden" id="previewPanel"></div>
+    <div id="remindersRoot"></div>
+    <div class="sync-status" id="syncStatus"></div>
+  </section>
+
+</div>
+
+<!-- Settings modal -->
+<div class="modal-overlay hidden" id="settingsModal">
+  <div class="modal">
+    <div class="modal-inner-wrap">
+      <button class="modal-close-x" data-close="settingsModal">✕</button>
+      <h2>Налаштування AI</h2>
+      <p class="modal-hint">Ключ зберігається лише на цьому пристрої (в пам'яті браузера) і використовується для розпізнавання голосу й тексту через Gemini API. Отримати ключ можна в Google AI Studio.</p>
+      <div class="field">
+        <label for="apiKeyInput">API ключ Gemini</label>
+        <div class="password-row">
+          <input type="password" id="apiKeyInput" placeholder="AIza...">
+          <button class="ghost-btn" id="toggleKeyVisibility" style="flex:none;padding:10px 12px;">👁</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="modelInput">Модель</label>
+        <input type="text" id="modelInput" placeholder="gemini-3.5-flash-lite">
+      </div>
+      <p class="modal-hint">Нагадування зберігаються у спільній базі (Supabase) і синхронізуються з усіх пристроїв. Сповіщення в Telegram надсилає окремий сервер за розкладом — налаштовується в GitHub, не тут.</p>
+      <div class="modal-actions">
+        <button class="ghost-btn" data-close="settingsModal">Скасувати</button>
+        <button class="primary-btn" id="saveSettingsBtn">Зберегти</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Manual add/edit modal -->
+<div class="modal-overlay hidden" id="manualModal">
+  <div class="modal">
+    <div class="modal-inner-wrap">
+      <button class="modal-close-x" data-close="manualModal">✕</button>
+      <h2 id="manualModalTitle">Нове нагадування</h2>
+
+      <div class="field">
+        <label for="mTitle">Що нагадати</label>
+        <input type="text" id="mTitle" placeholder="Наприклад: подзвонити лікарю">
+      </div>
+
+      <div class="row2">
+        <div class="field">
+          <label for="mDate">Дата</label>
+          <input type="date" id="mDate">
+        </div>
+        <div class="field">
+          <label for="mTime">Час</label>
+          <input type="time" id="mTime">
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="mRecurrence">Повторення</label>
+        <select id="mRecurrence">
+          <option value="none">Не повторювати</option>
+          <option value="daily">Щодня</option>
+          <option value="weekly">Щотижня</option>
+          <option value="monthly">Щомісяця</option>
+          <option value="yearly">Щороку</option>
+        </select>
+      </div>
+
+      <div class="field hidden" id="weeklyDaysField">
+        <label>Дні тижня</label>
+        <div class="day-picker" id="dayPicker">
+          <div class="day-chip" data-day="mon">Пн</div>
+          <div class="day-chip" data-day="tue">Вт</div>
+          <div class="day-chip" data-day="wed">Ср</div>
+          <div class="day-chip" data-day="thu">Чт</div>
+          <div class="day-chip" data-day="fri">Пт</div>
+          <div class="day-chip" data-day="sat">Сб</div>
+          <div class="day-chip" data-day="sun">Нд</div>
+        </div>
+      </div>
+
+      <div class="field hidden" id="intervalField">
+        <label for="mInterval">Кожні N (одиниць повторення)</label>
+        <input type="number" id="mInterval" min="1" value="1" style="max-width:100px;">
+      </div>
+
+      <div class="field">
+        <label for="mNote">Нотатка (необов'язково)</label>
+        <textarea id="mNote" placeholder="Додаткові деталі..." style="min-height:50px;"></textarea>
+      </div>
+
+      <div class="modal-actions">
+        <button class="ghost-btn" data-close="manualModal">Скасувати</button>
+        <button class="primary-btn" id="saveManualBtn">Зберегти</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast-root" id="toastRoot"></div>
+
+<script>
+(function(){
+
+  /* ============================ SUPABASE ============================ */
+  // Publishable (anon) key — призначений для використання в браузері,
+  // доступ до таблиці обмежений політиками RLS у самій базі.
+  const SUPABASE_URL = 'https://doittvzvyhujulghghmf.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_L0dQpdcZxQuUDwLy7K57NA_OtKhMB3l';
+  const TABLE = 'reminders';
+
+  let sb = null;
+  if (window.supabase) {
+    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  }
+
+  /* ============================ STATE ============================ */
+  const state = {
+    reminders: [],
+    settings: { apiKey:'', model:'gemini-3.5-flash-lite' },
+    editingId: null,
+    showCompleted: false,
+    pendingPreview: null
+  };
+
+  const DAY_ORDER = ['sun','mon','tue','wed','thu','fri','sat'];
+  const DAY_LABEL = {mon:'Пн',tue:'Вт',wed:'Ср',thu:'Чт',fri:'Пт',sat:'Сб',sun:'Нд'};
+
+  /* ============================ LOCAL SETTINGS (per device) ============================ */
+  const LS_SETTINGS_KEY = 'nagaday_settings_v1';
+  function loadLocalSettings(){
+    try{
+      const raw = localStorage.getItem(LS_SETTINGS_KEY);
+      if (raw) state.settings = Object.assign(state.settings, JSON.parse(raw));
+    }catch(e){ /* немає збережених налаштувань */ }
+  }
+  function saveLocalSettings(){
+    try{ localStorage.setItem(LS_SETTINGS_KEY, JSON.stringify(state.settings)); }
+    catch(e){ console.error('settings save failed', e); }
+  }
+
+  /* ============================ SUPABASE CRUD ============================ */
+  function rowToReminder(row){
+    return Object.assign({}, row.data, { id: row.id });
+  }
+
+  function setSyncStatus(msg, isErr){
+    const el = document.getElementById('syncStatus');
+    if (!el) return;
+    el.textContent = msg || '';
+    el.classList.toggle('err', !!isErr);
+  }
+
+  async function fetchRemindersFromServer(){
+    if (!sb) return null;
+    const { data, error } = await sb.from(TABLE).select('id, data').order('id', { ascending: true });
+    if (error){ console.error('fetch reminders error', error); return null; }
+    return data.map(rowToReminder);
+  }
+
+  async function insertReminderOnServer(reminderData){
+    if (!sb) return null;
+    const { data, error } = await sb.from(TABLE).insert({ data: reminderData }).select('id, data').single();
+    if (error){ console.error('insert reminder error', error); return null; }
+    return rowToReminder(data);
+  }
+
+  async function updateReminderOnServer(id, reminderData){
+    if (!sb) return null;
+    const { data, error } = await sb.from(TABLE).update({ data: reminderData }).eq('id', id).select('id, data').single();
+    if (error){ console.error('update reminder error', error); return null; }
+    return rowToReminder(data);
+  }
+
+  async function deleteReminderOnServer(id){
+    if (!sb) return false;
+    const { error } = await sb.from(TABLE).delete().eq('id', id);
+    if (error){ console.error('delete reminder error', error); return false; }
+    return true;
+  }
+
+  function reminderPayload(r){
+    // Виокремлюємо все, крім id (id живе окремо як id рядка в Supabase)
+    const copy = Object.assign({}, r);
+    delete copy.id;
+    return copy;
+  }
+
+  async function syncFromServer(){
+    setSyncStatus('Синхронізація…');
+    const fresh = await fetchRemindersFromServer();
+    if (fresh === null){
+      setSyncStatus('Немає з\'єднання з сервером. Перевірте інтернет.', true);
+      return;
+    }
+    state.reminders = fresh;
+    setSyncStatus('');
+    catchUpMissed();
+    renderReminders();
+  }
+
+  /* ============================ HELPERS ============================ */
+  function uid(){
+    return (crypto.randomUUID ? crypto.randomUUID() : 'id-'+Date.now()+'-'+Math.random().toString(16).slice(2));
+  }
+  function pad(n){ return String(n).padStart(2,'0'); }
+  function toLocalInputString(d){
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+  function nowLocalLabel(){
+    const d = new Date();
+    const weekday = d.toLocaleDateString('uk-UA',{weekday:'long'});
+    const datePart = d.toLocaleDateString('uk-UA',{day:'numeric',month:'long',year:'numeric'});
+    return `${weekday}, ${datePart}, ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+  function showToast(msg){
+    const root = document.getElementById('toastRoot');
+    const el = document.createElement('div');
+    el.className = 'toast';
+    el.textContent = msg;
+    root.appendChild(el);
+    setTimeout(()=>{ el.remove(); }, 4200);
+  }
+  function escapeHtml(str){
+    return (str||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  /* ============================ RECURRENCE MATH ============================ */
+  function addOccurrence(fromDate, rec){
+    const d = new Date(fromDate);
+    const interval = Math.max(1, parseInt(rec.interval,10) || 1);
+    if (rec.type === 'daily'){
+      d.setDate(d.getDate() + interval);
+    } else if (rec.type === 'weekly'){
+      if (rec.days && rec.days.length){
+        for (let i=1;i<=8;i++){
+          const cand = new Date(d);
+          cand.setDate(d.getDate()+i);
+          if (rec.days.includes(DAY_ORDER[cand.getDay()])) return cand;
+        }
+        d.setDate(d.getDate() + 7*interval);
+      } else {
+        d.setDate(d.getDate() + 7*interval);
+      }
+    } else if (rec.type === 'monthly'){
+      d.setMonth(d.getMonth() + interval);
+    } else if (rec.type === 'yearly'){
+      d.setFullYear(d.getFullYear() + interval);
+    }
+    return d;
+  }
+
+  function recurrenceLabel(rec){
+    if (!rec || rec.type === 'none') return null;
+    const n = Math.max(1, parseInt(rec.interval,10) || 1);
+    if (rec.type === 'daily') return n===1 ? 'щодня' : `кожні ${n} дні`;
+    if (rec.type === 'weekly'){
+      if (rec.days && rec.days.length) return rec.days.map(d=>DAY_LABEL[d]).join(' ');
+      return n===1 ? 'щотижня' : `кожні ${n} тижні`;
+    }
+    if (rec.type === 'monthly') return n===1 ? 'щомісяця' : `кожні ${n} міс.`;
+    if (rec.type === 'yearly') return n===1 ? 'щороку' : `кожні ${n} р.`;
+    return null;
+  }
+
+  function fmtDateTime(iso){
+    const d = new Date(iso);
+    const now = new Date();
+    const sameDay = d.toDateString() === now.toDateString();
+    const tmr = new Date(now); tmr.setDate(now.getDate()+1);
+    const isTomorrow = d.toDateString() === tmr.toDateString();
+    const timeStr = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    if (sameDay) return `сьогодні, ${timeStr}`;
+    if (isTomorrow) return `завтра, ${timeStr}`;
+    return d.toLocaleDateString('uk-UA',{day:'numeric',month:'long'}) + ', ' + timeStr;
+  }
+
+  /* ============================ NORMALIZE ON LOAD ============================ */
+  function catchUpMissed(){
+    const now = new Date();
+    const changedIds = [];
+    for (const r of state.reminders){
+      if (r.completed || !r.datetime || !r.recurrence || r.recurrence.type === 'none') continue;
+      let due = new Date(r.datetime);
+      let iter = 0;
+      while (due <= now && iter < 2000){
+        due = addOccurrence(due, r.recurrence);
+        iter++;
+      }
+      if (iter > 0){
+        r.datetime = toLocalInputString(due);
+        r.notifiedAt = null;
+        changedIds.push(r.id);
+      }
+    }
+    changedIds.forEach(id=>{
+      const r = state.reminders.find(x=>x.id===id);
+      if (r) updateReminderOnServer(id, reminderPayload(r));
+    });
+  }
+
+  /* ============================ NOTIFICATIONS ============================ */
+  let audioCtx = null;
+  function playChime(){
+    try{
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      const notes = [880, 1108];
+      notes.forEach((freq, i)=>{
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        const start = audioCtx.currentTime + i*0.16;
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(0.18, start+0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start+0.5);
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.start(start); osc.stop(start+0.55);
+      });
+    }catch(e){ /* audio not available */ }
+  }
+  function fireNotification(r){
+    playChime();
+    showToast('🔔 ' + r.title);
+    if (window.Notification && Notification.permission === 'granted'){
+      try{ new Notification('Нагадай', {body: r.title, tag: String(r.id)}); }catch(e){}
+    }
+  }
+  function requestNotifyPermission(){
+    if (window.Notification && Notification.permission === 'default'){
+      Notification.requestPermission();
+    }
+  }
+  function checkDue(){
+    // Локальна перевірка працює тільки поки вкладка відкрита.
+    // Сповіщення в Telegram надсилає окремий сервер (GitHub Actions), незалежно від цього.
+    const now = new Date();
+    const changedIds = [];
+    for (const r of state.reminders){
+      if (r.completed || !r.datetime || r.notifiedAt) continue;
+      const due = new Date(r.datetime);
+      if (due <= now){
+        fireNotification(r);
+        if (r.recurrence && r.recurrence.type !== 'none'){
+          const next = addOccurrence(due, r.recurrence);
+          r.datetime = toLocalInputString(next);
+          r.notifiedAt = null;
+        } else {
+          r.notifiedAt = now.toISOString();
+        }
+        changedIds.push(r.id);
+      }
+    }
+    if (changedIds.length){
+      renderReminders();
+      changedIds.forEach(id=>{
+        const r = state.reminders.find(x=>x.id===id);
+        if (r) updateReminderOnServer(id, reminderPayload(r));
+      });
+    }
+  }
+
+  /* ============================ RENDER: LIST ============================ */
+  function groupReminders(){
+    const active = state.reminders.filter(r=>!r.completed);
+    const now = new Date();
+    const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startTomorrow = new Date(startToday); startTomorrow.setDate(startToday.getDate()+1);
+    const startWeek = new Date(startToday); startWeek.setDate(startToday.getDate()+7);
+
+    const groups = { overdue:[], noDate:[], today:[], tomorrow:[], week:[], later:[] };
+    for (const r of active){
+      if (!r.datetime){ groups.noDate.push(r); continue; }
+      const d = new Date(r.datetime);
+      const isRecurring = r.recurrence && r.recurrence.type !== 'none';
+      if (d < now && !isRecurring){ groups.overdue.push(r); continue; }
+      if (d < startTomorrow) groups.today.push(r);
+      else if (d < startWeek && d.toDateString() === startTomorrow.toDateString()) groups.tomorrow.push(r);
+      else if (d < startWeek) groups.week.push(r);
+      else groups.later.push(r);
+    }
+    const byDate = (a,b)=> new Date(a.datetime||0) - new Date(b.datetime||0);
+    groups.overdue.sort(byDate); groups.today.sort(byDate); groups.tomorrow.sort(byDate);
+    groups.week.sort(byDate); groups.later.sort(byDate);
+
+    return [
+      {label:'Просрочено', items: groups.overdue, danger:true},
+      {label:'Сьогодні', items: groups.today},
+      {label:'Завтра', items: groups.tomorrow},
+      {label:'Цього тижня', items: groups.week},
+      {label:'Пізніше', items: groups.later},
+      {label:'Без дати', items: groups.noDate}
+    ].filter(g=>g.items.length);
+  }
+
+  function cardHtml(r){
+    const overdue = r.datetime && new Date(r.datetime) < new Date() && (!r.recurrence || r.recurrence.type==='none') && !r.completed;
+    const rec = recurrenceLabel(r.recurrence);
+    let metaHtml = '';
+    if (r.datetime) metaHtml += `<span class="tag time">${escapeHtml(fmtDateTime(r.datetime))}</span>`;
+    if (rec) metaHtml += `<span class="tag">↻ ${escapeHtml(rec)}</span>`;
+    if (overdue) metaHtml += `<span class="tag overdue-tag">просрочено</span>`;
+    return `
+      <div class="card ${overdue?'overdue':''} ${r.completed?'completed':''}" data-id="${r.id}">
+        <div class="check-circle" data-action="toggle" data-id="${r.id}">${r.completed?'✓':''}</div>
+        <div class="card-body">
+          <div class="card-title">${escapeHtml(r.title)}</div>
+          ${metaHtml ? `<div class="card-meta">${metaHtml}</div>` : ''}
+          ${r.note ? `<div class="card-note">${escapeHtml(r.note)}</div>` : ''}
+        </div>
+        <div class="card-actions">
+          <button class="mini-btn" data-action="edit" data-id="${r.id}" title="Редагувати">✎</button>
+          <button class="mini-btn" data-action="delete" data-id="${r.id}" title="Видалити">🗑</button>
+        </div>
+      </div>`;
+  }
+
+  function renderReminders(){
+    const root = document.getElementById('remindersRoot');
+    const groups = groupReminders();
+    const completed = state.reminders.filter(r=>r.completed);
+
+    if (!groups.length && !completed.length){
+      root.innerHTML = `<div class="empty-state"><span class="em-mark">◐</span>Ще немає жодного нагадування.<br>Скажи щось мікрофоном або додай вручну.</div>`;
+      return;
+    }
+
+    let html = '';
+    for (const g of groups){
+      html += `<div class="group-label">${g.label} · ${g.items.length}</div>`;
+      html += g.items.map(cardHtml).join('');
+    }
+
+    if (completed.length){
+      html += `<button class="completed-toggle" id="completedToggle">${state.showCompleted?'▾':'▸'} Виконано (${completed.length})</button>`;
+      if (state.showCompleted){
+        html += completed.slice().reverse().map(cardHtml).join('');
+      }
+    }
+
+    root.innerHTML = html;
+
+    root.querySelectorAll('[data-action="toggle"]').forEach(el=>{
+      el.addEventListener('click', ()=> toggleComplete(el.dataset.id));
+    });
+    root.querySelectorAll('[data-action="edit"]').forEach(el=>{
+      el.addEventListener('click', ()=> openManualModal(el.dataset.id));
+    });
+    root.querySelectorAll('[data-action="delete"]').forEach(el=>{
+      el.addEventListener('click', ()=> deleteReminder(el.dataset.id));
+    });
+    const ct = document.getElementById('completedToggle');
+    if (ct) ct.addEventListener('click', ()=>{ state.showCompleted = !state.showCompleted; renderReminders(); });
+  }
+
+  async function toggleComplete(id){
+    const r = state.reminders.find(x=>String(x.id)===String(id));
+    if (!r) return;
+    r.completed = !r.completed;
+    renderReminders();
+    const ok = await updateReminderOnServer(r.id, reminderPayload(r));
+    if (!ok){ r.completed = !r.completed; renderReminders(); showToast('Не вдалося зберегти. Перевір інтернет.'); }
+  }
+  async function deleteReminder(id){
+    const r = state.reminders.find(x=>String(x.id)===String(id));
+    if (!r) return;
+    if (!confirm(`Видалити «${r.title}»?`)) return;
+    const backup = state.reminders;
+    state.reminders = state.reminders.filter(x=>String(x.id)!==String(id));
+    renderReminders();
+    const ok = await deleteReminderOnServer(r.id);
+    if (!ok){ state.reminders = backup; renderReminders(); showToast('Не вдалося видалити. Перевір інтернет.'); }
+  }
+
+  /* ============================ MANUAL MODAL ============================ */
+  function openManualModal(idOrNull){
+    state.editingId = idOrNull;
+    const modal = document.getElementById('manualModal');
+    const titleEl = document.getElementById('manualModalTitle');
+    const mTitle = document.getElementById('mTitle');
+    const mDate = document.getElementById('mDate');
+    const mTime = document.getElementById('mTime');
+    const mRecurrence = document.getElementById('mRecurrence');
+    const mInterval = document.getElementById('mInterval');
+    const mNote = document.getElementById('mNote');
+    const dayPicker = document.getElementById('dayPicker');
+
+    dayPicker.querySelectorAll('.day-chip').forEach(c=>c.classList.remove('active'));
+
+    if (idOrNull){
+      const r = state.reminders.find(x=>String(x.id)===String(idOrNull));
+      titleEl.textContent = 'Редагувати нагадування';
+      mTitle.value = r.title || '';
+      if (r.datetime){
+        const [d,t] = r.datetime.split('T');
+        mDate.value = d; mTime.value = t || '';
+      } else { mDate.value=''; mTime.value=''; }
+      mRecurrence.value = (r.recurrence && r.recurrence.type) || 'none';
+      mInterval.value = (r.recurrence && r.recurrence.interval) || 1;
+      mNote.value = r.note || '';
+      if (r.recurrence && r.recurrence.days){
+        r.recurrence.days.forEach(d=>{
+          const chip = dayPicker.querySelector(`[data-day="${d}"]`);
+          if (chip) chip.classList.add('active');
+        });
+      }
+    } else {
+      titleEl.textContent = 'Нове нагадування';
+      mTitle.value=''; mDate.value=''; mTime.value='';
+      mRecurrence.value='none'; mInterval.value=1; mNote.value='';
+    }
+    updateRecurrenceFieldsVisibility();
+    modal.classList.remove('hidden');
+    setTimeout(()=>mTitle.focus(), 50);
+  }
+
+  function updateRecurrenceFieldsVisibility(){
+    const type = document.getElementById('mRecurrence').value;
+    document.getElementById('weeklyDaysField').classList.toggle('hidden', type !== 'weekly');
+    document.getElementById('intervalField').classList.toggle('hidden', type === 'none');
+  }
+
+  function collectManualForm(){
+    const title = document.getElementById('mTitle').value.trim();
+    if (!title){ showToast('Введи, що саме нагадати'); return null; }
+    const date = document.getElementById('mDate').value;
+    const time = document.getElementById('mTime').value;
+    let datetime = null;
+    if (date){ datetime = `${date}T${time || '09:00'}`; }
+    else if (time){
+      const today = new Date();
+      datetime = `${today.getFullYear()}-${pad(today.getMonth()+1)}-${pad(today.getDate())}T${time}`;
+    }
+    const type = document.getElementById('mRecurrence').value;
+    const interval = parseInt(document.getElementById('mInterval').value,10) || 1;
+    const days = Array.from(document.querySelectorAll('#dayPicker .day-chip.active')).map(c=>c.dataset.day);
+    const note = document.getElementById('mNote').value.trim();
+    if (type === 'weekly' && days.length === 0 && !datetime){
+      showToast('Вкажи дату/час або дні тижня для повторення');
+      return null;
+    }
+    return {
+      title, datetime, note,
+      recurrence: { type, interval, days: type==='weekly' ? days : [] }
+    };
+  }
+
+  async function saveManual(){
+    const data = collectManualForm();
+    if (!data) return;
+    const btn = document.getElementById('saveManualBtn');
+    btn.disabled = true;
+    if (state.editingId){
+      const r = state.reminders.find(x=>String(x.id)===String(state.editingId));
+      const merged = Object.assign({}, r, data, { notifiedAt: null });
+      const updated = await updateReminderOnServer(r.id, reminderPayload(merged));
+      btn.disabled = false;
+      if (!updated){ showToast('Не вдалося зберегти на сервері.'); return; }
+      Object.assign(r, updated);
+    } else {
+      const payload = Object.assign({
+        completed:false, notifiedAt:null,
+        createdAt: new Date().toISOString(), source:'manual'
+      }, data);
+      const created = await insertReminderOnServer(payload);
+      btn.disabled = false;
+      if (!created){ showToast('Не вдалося зберегти на сервері.'); return; }
+      state.reminders.push(created);
+    }
+    renderReminders();
+    closeModal('manualModal');
+    showToast('Збережено');
+  }
+
+  /* ============================ SETTINGS MODAL ============================ */
+  function openSettingsModal(){
+    document.getElementById('apiKeyInput').value = state.settings.apiKey || '';
+    document.getElementById('modelInput').value = state.settings.model || 'gemini-3.5-flash-lite';
+    document.getElementById('settingsModal').classList.remove('hidden');
+  }
+  function saveSettingsFromModal(){
+    state.settings.apiKey = document.getElementById('apiKeyInput').value.trim();
+    state.settings.model = document.getElementById('modelInput').value.trim() || 'gemini-3.5-flash-lite';
+    saveLocalSettings();
+    closeModal('settingsModal');
+    showToast('Налаштування збережено');
+  }
+
+  function closeModal(id){ document.getElementById(id).classList.add('hidden'); }
+
+  /* ============================ GEMINI AI ============================ */
+  const RESPONSE_SCHEMA = {
+    type: "OBJECT",
+    properties: {
+      reminders: {
+        type: "ARRAY",
+        items: {
+          type: "OBJECT",
+          properties: {
+            title: { type: "STRING" },
+            datetime: { type: "STRING", description: "Формат YYYY-MM-DDTHH:mm (локальний час, без часової зони) або порожній рядок, якщо конкретний час не згадано" },
+            recurrence_type: { type: "STRING", enum: ["none","daily","weekly","monthly","yearly"] },
+            recurrence_interval: { type: "INTEGER" },
+            recurrence_days: { type: "ARRAY", items: { type: "STRING", enum: ["mon","tue","wed","thu","fri","sat","sun"] } },
+            note: { type: "STRING" }
+          },
+          required: ["title","recurrence_type"]
+        }
+      }
+    },
+    required: ["reminders"]
+  };
+
+  function buildPrompt(){
+    return `Ти — модуль розпізнавання нагадувань для голосового/текстового асистента українською мовою.
+Зараз: ${nowLocalLabel()} (формат для розрахунків: ${toLocalInputString(new Date())}).
+Твоє завдання: прослухати/прочитати вхідні дані користувача та виділити одне або декілька окремих нагадувань.
+Для кожного нагадування визнач:
+- title: короткий, чіткий опис справи (без слів "нагадай", "нагадати");
+- datetime: конкретну дату й час у форматі YYYY-MM-DDTHH:mm, розрахувавши відносні вирази ("завтра", "через 2 години", "у понеділок") від поточного моменту. Якщо конкретного часу немає, а є лише дата — поставь 09:00. Якщо ні дати, ні часу немає (просто задача) — залиш порожній рядок.
+- recurrence_type: none/daily/weekly/monthly/yearly, якщо йдеться про повторення ("щодня", "кожного понеділка", "щомісяця");
+- recurrence_interval: число (за замовчуванням 1);
+- recurrence_days: масив днів тижня (mon..sun) якщо повторення тижневе і прив'язане до конкретних днів;
+- note: додаткові деталі, якщо є, інакше порожній рядок.
+Якщо в повідомленні кілька різних справ — поверни кілька окремих об'єктів. Відповідай лише JSON за схемою, без пояснень.
+Вхідні дані користувача:`;
+  }
+
+  function apiUrl(){
+    const model = encodeURIComponent(state.settings.model || 'gemini-3.5-flash-lite');
+    return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(state.settings.apiKey)}`;
+  }
+
+  async function callGemini(parts){
+    if (!state.settings.apiKey){
+      throw new Error('Спочатку додай API ключ у налаштуваннях');
+    }
+    const body = {
+      contents: [{ parts }],
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: RESPONSE_SCHEMA
+      }
+    };
+    const resp = await fetch(apiUrl(), {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    if (!resp.ok){
+      const errText = await resp.text().catch(()=> '');
+      throw new Error(`AI відповів помилкою (${resp.status}). ${errText.slice(0,180)}`);
+    }
+    const data = await resp.json();
+    const text = data && data.candidates && data.candidates[0] && data.candidates[0].content &&
+      data.candidates[0].content.parts ? data.candidates[0].content.parts.map(p=>p.text||'').join('') : '';
+    if (!text) throw new Error('AI не повернув розпізнаних даних');
+    let parsed;
+    try{ parsed = JSON.parse(text); }
+    catch(e){ throw new Error('Не вдалося розібрати відповідь AI'); }
+    return parsed;
+  }
+
+  async function callGeminiWithText(userText){
+    const parts = [{ text: buildPrompt() + '\n"' + userText + '"' }];
+    return callGemini(parts);
+  }
+
+  async function callGeminiWithAudio(base64, mime){
+    const parts = [
+      { inlineData: { mimeType: mime, data: base64 } },
+      { text: buildPrompt() + ' (дивись аудіо-запис вище)' }
+    ];
+    return callGemini(parts);
+  }
+
+  function parsedToReminders(parsed){
+    const list = (parsed && parsed.reminders) || [];
+    return list.map(item=>({
+      title: (item.title || 'Нагадування').trim(),
+      datetime: item.datetime ? item.datetime : null,
+      note: item.note || '',
+      recurrence: {
+        type: item.recurrence_type || 'none',
+        interval: item.recurrence_interval || 1,
+        days: item.recurrence_days || []
+      },
+      completed: false,
+      notifiedAt: null,
+      createdAt: new Date().toISOString()
+    }));
+  }
+
+  /* ============================ PREVIEW PANEL ============================ */
+  function showParsePreview(reminders, source){
+    state.pendingPreview = reminders.map(r=>Object.assign({source}, r));
+    const panel = document.getElementById('previewPanel');
+    if (!reminders.length){
+      panel.classList.add('hidden');
+      showToast('AI не розпізнав жодного нагадування. Спробуй ще раз або уточни деталі.');
+      return;
+    }
+    let html = `<h3>AI розпізнав ${reminders.length} ${reminders.length===1?'нагадування':'нагадувань'}</h3>
+      <p class="preview-sub">Перевір і збережи, або прибери непотрібне</p>`;
+    reminders.forEach((r,i)=>{
+      const rec = recurrenceLabel(r.recurrence);
+      const meta = [r.datetime ? fmtDateTime(r.datetime) : 'без дати', rec].filter(Boolean).join(' · ');
+      html += `<div class="preview-item">
+        <input type="checkbox" checked data-idx="${i}" class="pi-check">
+        <div>
+          <div class="pi-title">${escapeHtml(r.title)}</div>
+          <div class="pi-meta">${escapeHtml(meta)}</div>
+        </div>
+      </div>`;
+    });
+    html += `<div class="preview-actions">
+      <button class="ghost-btn" id="previewCancel">Скасувати</button>
+      <button class="primary-btn" id="previewSave">Зберегти</button>
+    </div>`;
+    panel.innerHTML = html;
+    panel.classList.remove('hidden');
+    panel.scrollIntoView({behavior:'smooth', block:'nearest'});
+
+    document.getElementById('previewCancel').addEventListener('click', ()=>{
+      state.pendingPreview = null;
+      panel.classList.add('hidden');
+    });
+    document.getElementById('previewSave').addEventListener('click', async ()=>{
+      const saveBtn = document.getElementById('previewSave');
+      saveBtn.disabled = true;
+      const checks = panel.querySelectorAll('.pi-check');
+      const toSave = [];
+      checks.forEach(chk=>{
+        if (chk.checked) toSave.push(state.pendingPreview[+chk.dataset.idx]);
+      });
+      let count = 0;
+      for (const payload of toSave){
+        const created = await insertReminderOnServer(payload);
+        if (created){ state.reminders.push(created); count++; }
+      }
+      renderReminders();
+      panel.classList.add('hidden');
+      state.pendingPreview = null;
+      saveBtn.disabled = false;
+      showToast(count ? `Додано ${count} нагадувань` : 'Нічого не збережено (перевір інтернет)');
+    });
+  }
+
+  /* ============================ VOICE RECORDING ============================ */
+  let mediaRecorder = null;
+  let audioChunks = [];
+  let recordingStream = null;
+  let timerInterval = null;
+  let recordSeconds = 0;
+
+  function setMicState(mode){
+    const btn = document.getElementById('micBtn');
+    const status = document.getElementById('heroStatus');
+    btn.classList.remove('recording','processing');
+    if (mode === 'recording'){
+      btn.classList.add('recording');
+      status.textContent = 'Слухаю... Натисни ще раз, щоб зупинити';
+    } else if (mode === 'processing'){
+      btn.classList.add('processing');
+      status.textContent = 'AI аналізує запис...';
+    } else {
+      status.textContent = 'Натисни й скажи, що і коли нагадати';
+    }
+  }
+
+  function startTimer(){
+    recordSeconds = 0;
+    const el = document.getElementById('recordTimer');
+    el.classList.remove('hidden');
+    el.textContent = '00:00';
+    timerInterval = setInterval(()=>{
+      recordSeconds++;
+      el.textContent = `${pad(Math.floor(recordSeconds/60))}:${pad(recordSeconds%60)}`;
+    }, 1000);
+  }
+  function stopTimer(){
+    clearInterval(timerInterval);
+    document.getElementById('recordTimer').classList.add('hidden');
+  }
+
+  function blobToBase64(blob){
+    return new Promise((resolve,reject)=>{
+      const reader = new FileReader();
+      reader.onloadend = ()=> resolve(String(reader.result).split(',')[1] || '');
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  async function startRecording(){
+    if (!state.settings.apiKey){
+      showToast('Спочатку додай API ключ у налаштуваннях');
+      openSettingsModal();
+      return;
+    }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      showToast('Цей браузер не підтримує запис аудіо');
+      return;
+    }
+    try{
+      recordingStream = await navigator.mediaDevices.getUserMedia({audio:true});
+    }catch(e){
+      showToast('Немає доступу до мікрофона');
+      return;
+    }
+    requestNotifyPermission();
+    audioChunks = [];
+    const candidates = ['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/mp4'];
+    let chosen = '';
+    for (const c of candidates){
+      if (window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(c)){ chosen = c; break; }
+    }
+    try{
+      mediaRecorder = chosen ? new MediaRecorder(recordingStream, {mimeType: chosen}) : new MediaRecorder(recordingStream);
+    }catch(e){
+      mediaRecorder = new MediaRecorder(recordingStream);
+    }
+    mediaRecorder.addEventListener('dataavailable', e=>{ if (e.data && e.data.size>0) audioChunks.push(e.data); });
+    mediaRecorder.addEventListener('stop', onRecordingStop);
+    mediaRecorder.start();
+    setMicState('recording');
+    startTimer();
+  }
+
+  function stopRecording(){
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+    if (recordingStream) recordingStream.getTracks().forEach(t=>t.stop());
+    stopTimer();
+  }
+
+  async function onRecordingStop(){
+    setMicState('processing');
+    const mime = (mediaRecorder && mediaRecorder.mimeType) || 'audio/webm';
+    const blob = new Blob(audioChunks, {type: mime});
+    if (blob.size < 800){
+      showToast('Запис занадто короткий, спробуй ще раз');
+      setMicState('idle');
+      return;
+    }
+    try{
+      const base64 = await blobToBase64(blob);
+      const parsed = await callGeminiWithAudio(base64, mime);
+      const reminders = parsedToReminders(parsed);
+      showParsePreview(reminders, 'voice');
+    }catch(err){
+      showToast(err.message || 'Помилка розпізнавання');
+    }finally{
+      setMicState('idle');
+    }
+  }
+
+  let isRecording = false;
+  function onMicClick(){
+    if (!isRecording){
+      isRecording = true;
+      startRecording();
+    } else {
+      isRecording = false;
+      stopRecording();
+    }
+  }
+
+  /* ============================ TEXT (AI) MODE ============================ */
+  async function onTextParse(){
+    const input = document.getElementById('textInput');
+    const text = input.value.trim();
+    if (!text){ showToast('Введи текст нагадування'); return; }
+    if (!state.settings.apiKey){
+      showToast('Спочатку додай API ключ у налаштуваннях');
+      openSettingsModal();
+      return;
+    }
+    const btn = document.getElementById('textParseBtn');
+    btn.disabled = true;
+    btn.textContent = 'AI аналізує...';
+    try{
+      const parsed = await callGeminiWithText(text);
+      const reminders = parsedToReminders(parsed);
+      showParsePreview(reminders, 'text');
+      input.value = '';
+    }catch(err){
+      showToast(err.message || 'Помилка розпізнавання');
+    }finally{
+      btn.disabled = false;
+      btn.textContent = 'Розпізнати з AI';
+    }
+  }
+
+  /* ============================ WIRE UP ============================ */
+  function init(){
+    if (!sb){
+      setSyncStatus('Не вдалося завантажити бібліотеку синхронізації. Перевір інтернет і онови сторінку.', true);
+    }
+    document.getElementById('micBtn').addEventListener('click', onMicClick);
+    document.getElementById('settingsBtn').addEventListener('click', openSettingsModal);
+    document.getElementById('saveSettingsBtn').addEventListener('click', saveSettingsFromModal);
+    document.getElementById('openManualBtn').addEventListener('click', ()=>openManualModal(null));
+    document.getElementById('saveManualBtn').addEventListener('click', saveManual);
+    document.getElementById('mRecurrence').addEventListener('change', updateRecurrenceFieldsVisibility);
+    document.getElementById('textParseBtn').addEventListener('click', onTextParse);
+    document.getElementById('toggleTextBtn').addEventListener('click', ()=>{
+      document.getElementById('textPanel').classList.toggle('hidden');
+    });
+    document.getElementById('toggleKeyVisibility').addEventListener('click', ()=>{
+      const inp = document.getElementById('apiKeyInput');
+      inp.type = inp.type === 'password' ? 'text' : 'password';
+    });
+    document.querySelectorAll('[data-close]').forEach(btn=>{
+      btn.addEventListener('click', ()=> closeModal(btn.dataset.close));
+    });
+    document.querySelectorAll('.modal-overlay').forEach(overlay=>{
+      overlay.addEventListener('click', e=>{ if (e.target === overlay) overlay.classList.add('hidden'); });
+    });
+    document.getElementById('dayPicker').addEventListener('click', e=>{
+      const chip = e.target.closest('.day-chip');
+      if (chip) chip.classList.toggle('active');
+    });
+
+    loadLocalSettings();
+    requestNotifyPermission();
+
+    syncFromServer().then(()=>{
+      checkDue();
+      setInterval(checkDue, 20000);
+    });
+
+    // Живе оновлення, якщо нагадування змінилися з іншого пристрою
+    // або їх позначив сервер сповіщень (notifiedAt).
+    if (sb){
+      sb.channel('reminders-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: TABLE }, function(){
+          syncFromServer();
+        })
+        .subscribe();
+    }
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
