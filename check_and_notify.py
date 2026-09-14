@@ -28,7 +28,7 @@ SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
 SUPABASE_ANON_KEY = os.environ["SUPABASE_ANON_KEY"]
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
-TIMEZONE = os.environ.get("TIMEZONE", "Europe/Kyiv")
+TIMEZONE = os.environ.get("TIMEZONE", "Europe/Warsaw")
 
 TZ = ZoneInfo(TIMEZONE)
 
