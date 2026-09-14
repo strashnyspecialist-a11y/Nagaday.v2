@@ -6,7 +6,6 @@
 <title>Нагадай — голосовий асистент нагадувань</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{
     --bg:#12141e;
@@ -300,12 +299,6 @@
   }
   .completed-toggle:hover{color:var(--text-muted);}
 
-  .sync-status{
-    font-size:11.5px;color:var(--text-dim);
-    text-align:center;padding:6px 0 0;
-  }
-  .sync-status.err{color:var(--danger);}
-
   /* ---------- Modal ---------- */
   .modal-overlay{
     position:fixed;inset:0;
@@ -417,7 +410,6 @@
   <section class="list-section">
     <div class="preview-panel hidden" id="previewPanel"></div>
     <div id="remindersRoot"></div>
-    <div class="sync-status" id="syncStatus"></div>
   </section>
 
 </div>
@@ -428,7 +420,7 @@
     <div class="modal-inner-wrap">
       <button class="modal-close-x" data-close="settingsModal">✕</button>
       <h2>Налаштування AI</h2>
-      <p class="modal-hint">Ключ зберігається лише на цьому пристрої (в пам'яті браузера) і використовується для розпізнавання голосу й тексту через Gemini API. Отримати ключ можна в Google AI Studio.</p>
+      <p class="modal-hint">Ключ зберігається лише в цьому браузері (localStorage) і використовується для розпізнавання голосу й тексту через Gemini API. Отримати ключ можна в Google AI Studio.</p>
       <div class="field">
         <label for="apiKeyInput">API ключ Gemini</label>
         <div class="password-row">
@@ -440,7 +432,6 @@
         <label for="modelInput">Модель</label>
         <input type="text" id="modelInput" placeholder="gemini-3.5-flash-lite">
       </div>
-      <p class="modal-hint">Нагадування зберігаються у спільній базі (Supabase) і синхронізуються з усіх пристроїв. Сповіщення в Telegram надсилає окремий сервер за розкладом — налаштовується в GitHub, не тут.</p>
       <div class="modal-actions">
         <button class="ghost-btn" data-close="settingsModal">Скасувати</button>
         <button class="primary-btn" id="saveSettingsBtn">Зберегти</button>
@@ -519,17 +510,13 @@
 <script>
 (function(){
 
-  /* ============================ SUPABASE ============================ */
-  // Publishable (anon) key — призначений для використання в браузері,
-  // доступ до таблиці обмежений політиками RLS у самій базі.
-  const SUPABASE_URL = 'https://doittvzvyhujulghghmf.supabase.co';
-  const SUPABASE_ANON_KEY = 'sb_publishable_L0dQpdcZxQuUDwLy7K57NA_OtKhMB3l';
-  const TABLE = 'reminders';
-
-  let sb = null;
-  if (window.supabase) {
-    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-  }
+  /* ============================ CONFIG (Supabase) ============================ */
+  // Supabase's anon key is meant to be used client-side. But because the "reminders"
+  // table currently has an "allow all" RLS policy, anyone who has this key (i.e.
+  // anyone who can view this page's source, or your public repo) can read/write/delete
+  // every row in the table. Fine for a personal single-user tool, just be aware of it.
+  const SUPABASE_URL = 'https://qbkhxmyzxkilqhvxjrbg.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFia2h4bXl6eGtpbHFodnhqcmJnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk0MDQwMDEsImV4cCI6MjEwNDk4MDAwMX0.GS04Dwf6dl_m35XqgXybpwGDxsgLQKM4Jnboz98s2Vg';
 
   /* ============================ STATE ============================ */
   const state = {
@@ -543,77 +530,88 @@
   const DAY_ORDER = ['sun','mon','tue','wed','thu','fri','sat'];
   const DAY_LABEL = {mon:'Пн',tue:'Вт',wed:'Ср',thu:'Чт',fri:'Пт',sat:'Сб',sun:'Нд'};
 
-  /* ============================ LOCAL SETTINGS (per device) ============================ */
-  const LS_SETTINGS_KEY = 'nagaday_settings_v1';
-  function loadLocalSettings(){
-    try{
-      const raw = localStorage.getItem(LS_SETTINGS_KEY);
-      if (raw) state.settings = Object.assign(state.settings, JSON.parse(raw));
-    }catch(e){ /* немає збережених налаштувань */ }
+  /* ============================ SUPABASE (reminders storage) ============================ */
+  function sbHeaders(extra){
+    return Object.assign({
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+      'Content-Type': 'application/json'
+    }, extra || {});
   }
-  function saveLocalSettings(){
-    try{ localStorage.setItem(LS_SETTINGS_KEY, JSON.stringify(state.settings)); }
-    catch(e){ console.error('settings save failed', e); }
-  }
-
-  /* ============================ SUPABASE CRUD ============================ */
   function rowToReminder(row){
-    return Object.assign({}, row.data, { id: row.id });
+    return {
+      id: row.id,
+      title: row.title,
+      datetime: row.datetime, // ISO string (timestamptz) or null
+      note: row.note || '',
+      recurrence: {
+        type: row.recurrence_type || 'none',
+        interval: row.recurrence_interval || 1,
+        days: row.recurrence_days || []
+      },
+      completed: !!row.completed,
+      notifiedAt: row.notified_at,
+      createdAt: row.created_at,
+      source: row.source || 'manual'
+    };
+  }
+  function reminderToRow(r){
+    return {
+      title: r.title,
+      datetime: r.datetime,
+      note: r.note || '',
+      recurrence_type: (r.recurrence && r.recurrence.type) || 'none',
+      recurrence_interval: (r.recurrence && r.recurrence.interval) || 1,
+      recurrence_days: (r.recurrence && r.recurrence.days) || [],
+      completed: !!r.completed,
+      notified_at: r.notifiedAt || null,
+      source: r.source || 'manual'
+    };
+  }
+  async function fetchReminders(){
+    const resp = await fetch(SUPABASE_URL + '/rest/v1/reminders?select=*&order=created_at.asc', {headers: sbHeaders()});
+    if (!resp.ok) throw new Error('Не вдалося завантажити дані з Supabase (' + resp.status + ')');
+    const rows = await resp.json();
+    return rows.map(rowToReminder);
+  }
+  async function insertReminderRow(r){
+    const resp = await fetch(SUPABASE_URL + '/rest/v1/reminders', {
+      method:'POST',
+      headers: sbHeaders({'Prefer':'return=representation'}),
+      body: JSON.stringify(reminderToRow(r))
+    });
+    if (!resp.ok) throw new Error('Помилка збереження в Supabase (' + resp.status + ')');
+    const data = await resp.json();
+    return rowToReminder(data[0]);
+  }
+  async function updateReminderRow(id, patchObj){
+    const resp = await fetch(SUPABASE_URL + '/rest/v1/reminders?id=eq.' + id, {
+      method:'PATCH',
+      headers: sbHeaders({'Prefer':'return=representation'}),
+      body: JSON.stringify(patchObj)
+    });
+    if (!resp.ok) throw new Error('Помилка оновлення в Supabase (' + resp.status + ')');
+    const data = await resp.json();
+    return data[0] ? rowToReminder(data[0]) : null;
+  }
+  async function deleteReminderRow(id){
+    const resp = await fetch(SUPABASE_URL + '/rest/v1/reminders?id=eq.' + id, {
+      method:'DELETE',
+      headers: sbHeaders()
+    });
+    if (!resp.ok) throw new Error('Помилка видалення в Supabase (' + resp.status + ')');
   }
 
-  function setSyncStatus(msg, isErr){
-    const el = document.getElementById('syncStatus');
-    if (!el) return;
-    el.textContent = msg || '';
-    el.classList.toggle('err', !!isErr);
+  /* ============================ LOCAL SETTINGS (Gemini key — kept in this browser only) ============================ */
+  function loadSettings(){
+    try{
+      const raw = localStorage.getItem('nagaday-settings');
+      if (raw) state.settings = Object.assign(state.settings, JSON.parse(raw));
+    }catch(e){ /* ignore */ }
   }
-
-  async function fetchRemindersFromServer(){
-    if (!sb) return null;
-    const { data, error } = await sb.from(TABLE).select('id, data').order('id', { ascending: true });
-    if (error){ console.error('fetch reminders error', error); return null; }
-    return data.map(rowToReminder);
-  }
-
-  async function insertReminderOnServer(reminderData){
-    if (!sb) return null;
-    const { data, error } = await sb.from(TABLE).insert({ data: reminderData }).select('id, data').single();
-    if (error){ console.error('insert reminder error', error); return null; }
-    return rowToReminder(data);
-  }
-
-  async function updateReminderOnServer(id, reminderData){
-    if (!sb) return null;
-    const { data, error } = await sb.from(TABLE).update({ data: reminderData }).eq('id', id).select('id, data').single();
-    if (error){ console.error('update reminder error', error); return null; }
-    return rowToReminder(data);
-  }
-
-  async function deleteReminderOnServer(id){
-    if (!sb) return false;
-    const { error } = await sb.from(TABLE).delete().eq('id', id);
-    if (error){ console.error('delete reminder error', error); return false; }
-    return true;
-  }
-
-  function reminderPayload(r){
-    // Виокремлюємо все, крім id (id живе окремо як id рядка в Supabase)
-    const copy = Object.assign({}, r);
-    delete copy.id;
-    return copy;
-  }
-
-  async function syncFromServer(){
-    setSyncStatus('Синхронізація…');
-    const fresh = await fetchRemindersFromServer();
-    if (fresh === null){
-      setSyncStatus('Немає з\'єднання з сервером. Перевірте інтернет.', true);
-      return;
-    }
-    state.reminders = fresh;
-    setSyncStatus('');
-    catchUpMissed();
-    renderReminders();
+  function saveSettingsLocal(){
+    try{ localStorage.setItem('nagaday-settings', JSON.stringify(state.settings)); }
+    catch(e){ console.error('settings save failed', e); }
   }
 
   /* ============================ HELPERS ============================ */
@@ -621,8 +619,16 @@
     return (crypto.randomUUID ? crypto.randomUUID() : 'id-'+Date.now()+'-'+Math.random().toString(16).slice(2));
   }
   function pad(n){ return String(n).padStart(2,'0'); }
-  function toLocalInputString(d){
-    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  function isoToLocalParts(iso){
+    const d = new Date(iso);
+    return {
+      date: `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`,
+      time: `${pad(d.getHours())}:${pad(d.getMinutes())}`
+    };
+  }
+  function localPartsToIso(date, time){
+    const localStr = `${date}T${time || '09:00'}`;
+    return new Date(localStr).toISOString();
   }
   function nowLocalLabel(){
     const d = new Date();
@@ -692,10 +698,10 @@
     return d.toLocaleDateString('uk-UA',{day:'numeric',month:'long'}) + ', ' + timeStr;
   }
 
-  /* ============================ NORMALIZE ON LOAD ============================ */
-  function catchUpMissed(){
+  /* ============================ CATCH UP MISSED (on load) ============================ */
+  async function catchUpMissed(){
     const now = new Date();
-    const changedIds = [];
+    const jobs = [];
     for (const r of state.reminders){
       if (r.completed || !r.datetime || !r.recurrence || r.recurrence.type === 'none') continue;
       let due = new Date(r.datetime);
@@ -705,18 +711,15 @@
         iter++;
       }
       if (iter > 0){
-        r.datetime = toLocalInputString(due);
+        r.datetime = due.toISOString();
         r.notifiedAt = null;
-        changedIds.push(r.id);
+        jobs.push(updateReminderRow(r.id, {datetime:r.datetime, notified_at:null}).catch(e=>console.error(e)));
       }
     }
-    changedIds.forEach(id=>{
-      const r = state.reminders.find(x=>x.id===id);
-      if (r) updateReminderOnServer(id, reminderPayload(r));
-    });
+    if (jobs.length) await Promise.all(jobs);
   }
 
-  /* ============================ NOTIFICATIONS ============================ */
+  /* ============================ NOTIFICATIONS (local, only while this tab is open) ============================ */
   let audioCtx = null;
   function playChime(){
     try{
@@ -740,7 +743,7 @@
     playChime();
     showToast('🔔 ' + r.title);
     if (window.Notification && Notification.permission === 'granted'){
-      try{ new Notification('Нагадай', {body: r.title, tag: String(r.id)}); }catch(e){}
+      try{ new Notification('Нагадай', {body: r.title, tag: r.id}); }catch(e){}
     }
   }
   function requestNotifyPermission(){
@@ -748,32 +751,34 @@
       Notification.requestPermission();
     }
   }
-  function checkDue(){
-    // Локальна перевірка працює тільки поки вкладка відкрита.
-    // Сповіщення в Telegram надсилає окремий сервер (GitHub Actions), незалежно від цього.
+  // Note: the actual Telegram notification is sent server-side by the
+  // GitHub Actions script (check-reminders.mjs), so it works even if this
+  // tab/browser is closed. This local check is just a nice-to-have chime
+  // for whenever the app happens to be open.
+  async function checkDue(){
     const now = new Date();
-    const changedIds = [];
+    const jobs = [];
     for (const r of state.reminders){
       if (r.completed || !r.datetime || r.notifiedAt) continue;
       const due = new Date(r.datetime);
       if (due <= now){
         fireNotification(r);
         if (r.recurrence && r.recurrence.type !== 'none'){
-          const next = addOccurrence(due, r.recurrence);
-          r.datetime = toLocalInputString(next);
+          let next = addOccurrence(due, r.recurrence);
+          let iter = 0;
+          while (next <= now && iter < 2000){ next = addOccurrence(next, r.recurrence); iter++; }
+          r.datetime = next.toISOString();
           r.notifiedAt = null;
+          jobs.push(updateReminderRow(r.id, {datetime:r.datetime, notified_at:null}));
         } else {
           r.notifiedAt = now.toISOString();
+          jobs.push(updateReminderRow(r.id, {notified_at:r.notifiedAt}));
         }
-        changedIds.push(r.id);
       }
     }
-    if (changedIds.length){
+    if (jobs.length){
+      try{ await Promise.all(jobs); }catch(e){ console.error(e); }
       renderReminders();
-      changedIds.forEach(id=>{
-        const r = state.reminders.find(x=>x.id===id);
-        if (r) updateReminderOnServer(id, reminderPayload(r));
-      });
     }
   }
 
@@ -871,22 +876,21 @@
   }
 
   async function toggleComplete(id){
-    const r = state.reminders.find(x=>String(x.id)===String(id));
+    const r = state.reminders.find(x=>x.id===id);
     if (!r) return;
     r.completed = !r.completed;
     renderReminders();
-    const ok = await updateReminderOnServer(r.id, reminderPayload(r));
-    if (!ok){ r.completed = !r.completed; renderReminders(); showToast('Не вдалося зберегти. Перевір інтернет.'); }
+    try{ await updateReminderRow(id, {completed: r.completed}); }
+    catch(e){ showToast(e.message); }
   }
   async function deleteReminder(id){
-    const r = state.reminders.find(x=>String(x.id)===String(id));
+    const r = state.reminders.find(x=>x.id===id);
     if (!r) return;
     if (!confirm(`Видалити «${r.title}»?`)) return;
-    const backup = state.reminders;
-    state.reminders = state.reminders.filter(x=>String(x.id)!==String(id));
+    state.reminders = state.reminders.filter(x=>x.id!==id);
     renderReminders();
-    const ok = await deleteReminderOnServer(r.id);
-    if (!ok){ state.reminders = backup; renderReminders(); showToast('Не вдалося видалити. Перевір інтернет.'); }
+    try{ await deleteReminderRow(id); }
+    catch(e){ showToast(e.message); }
   }
 
   /* ============================ MANUAL MODAL ============================ */
@@ -905,12 +909,12 @@
     dayPicker.querySelectorAll('.day-chip').forEach(c=>c.classList.remove('active'));
 
     if (idOrNull){
-      const r = state.reminders.find(x=>String(x.id)===String(idOrNull));
+      const r = state.reminders.find(x=>x.id===idOrNull);
       titleEl.textContent = 'Редагувати нагадування';
       mTitle.value = r.title || '';
       if (r.datetime){
-        const [d,t] = r.datetime.split('T');
-        mDate.value = d; mTime.value = t || '';
+        const parts = isoToLocalParts(r.datetime);
+        mDate.value = parts.date; mTime.value = parts.time;
       } else { mDate.value=''; mTime.value=''; }
       mRecurrence.value = (r.recurrence && r.recurrence.type) || 'none';
       mInterval.value = (r.recurrence && r.recurrence.interval) || 1;
@@ -943,10 +947,11 @@
     const date = document.getElementById('mDate').value;
     const time = document.getElementById('mTime').value;
     let datetime = null;
-    if (date){ datetime = `${date}T${time || '09:00'}`; }
+    if (date){ datetime = localPartsToIso(date, time); }
     else if (time){
       const today = new Date();
-      datetime = `${today.getFullYear()}-${pad(today.getMonth()+1)}-${pad(today.getDate())}T${time}`;
+      const todayStr = `${today.getFullYear()}-${pad(today.getMonth()+1)}-${pad(today.getDate())}`;
+      datetime = localPartsToIso(todayStr, time);
     }
     const type = document.getElementById('mRecurrence').value;
     const interval = parseInt(document.getElementById('mInterval').value,10) || 1;
@@ -965,28 +970,23 @@
   async function saveManual(){
     const data = collectManualForm();
     if (!data) return;
-    const btn = document.getElementById('saveManualBtn');
-    btn.disabled = true;
-    if (state.editingId){
-      const r = state.reminders.find(x=>String(x.id)===String(state.editingId));
-      const merged = Object.assign({}, r, data, { notifiedAt: null });
-      const updated = await updateReminderOnServer(r.id, reminderPayload(merged));
-      btn.disabled = false;
-      if (!updated){ showToast('Не вдалося зберегти на сервері.'); return; }
-      Object.assign(r, updated);
-    } else {
-      const payload = Object.assign({
-        completed:false, notifiedAt:null,
-        createdAt: new Date().toISOString(), source:'manual'
-      }, data);
-      const created = await insertReminderOnServer(payload);
-      btn.disabled = false;
-      if (!created){ showToast('Не вдалося зберегти на сервері.'); return; }
-      state.reminders.push(created);
+    try{
+      if (state.editingId){
+        const idx = state.reminders.findIndex(x=>x.id===state.editingId);
+        const merged = Object.assign({}, state.reminders[idx], data, {notifiedAt:null});
+        const updated = await updateReminderRow(state.editingId, reminderToRow(merged));
+        state.reminders[idx] = updated || merged;
+      } else {
+        const newR = Object.assign({ completed:false, notifiedAt:null, source:'manual' }, data);
+        const inserted = await insertReminderRow(newR);
+        state.reminders.push(inserted);
+      }
+      renderReminders();
+      closeModal('manualModal');
+      showToast('Збережено');
+    }catch(e){
+      showToast(e.message);
     }
-    renderReminders();
-    closeModal('manualModal');
-    showToast('Збережено');
   }
 
   /* ============================ SETTINGS MODAL ============================ */
@@ -998,7 +998,7 @@
   function saveSettingsFromModal(){
     state.settings.apiKey = document.getElementById('apiKeyInput').value.trim();
     state.settings.model = document.getElementById('modelInput').value.trim() || 'gemini-3.5-flash-lite';
-    saveLocalSettings();
+    saveSettingsLocal();
     closeModal('settingsModal');
     showToast('Налаштування збережено');
   }
@@ -1030,7 +1030,7 @@
 
   function buildPrompt(){
     return `Ти — модуль розпізнавання нагадувань для голосового/текстового асистента українською мовою.
-Зараз: ${nowLocalLabel()} (формат для розрахунків: ${toLocalInputString(new Date())}).
+Зараз: ${nowLocalLabel()}.
 Твоє завдання: прослухати/прочитати вхідні дані користувача та виділити одне або декілька окремих нагадувань.
 Для кожного нагадування визнач:
 - title: короткий, чіткий опис справи (без слів "нагадай", "нагадати");
@@ -1091,11 +1091,11 @@
     return callGemini(parts);
   }
 
-  function parsedToReminders(parsed){
+  function parsedToReminders(parsed, source){
     const list = (parsed && parsed.reminders) || [];
     return list.map(item=>({
       title: (item.title || 'Нагадування').trim(),
-      datetime: item.datetime ? item.datetime : null,
+      datetime: item.datetime ? new Date(item.datetime).toISOString() : null,
       note: item.note || '',
       recurrence: {
         type: item.recurrence_type || 'none',
@@ -1104,13 +1104,13 @@
       },
       completed: false,
       notifiedAt: null,
-      createdAt: new Date().toISOString()
+      source
     }));
   }
 
   /* ============================ PREVIEW PANEL ============================ */
-  function showParsePreview(reminders, source){
-    state.pendingPreview = reminders.map(r=>Object.assign({source}, r));
+  function showParsePreview(reminders){
+    state.pendingPreview = reminders;
     const panel = document.getElementById('previewPanel');
     if (!reminders.length){
       panel.classList.add('hidden');
@@ -1143,23 +1143,21 @@
       panel.classList.add('hidden');
     });
     document.getElementById('previewSave').addEventListener('click', async ()=>{
-      const saveBtn = document.getElementById('previewSave');
-      saveBtn.disabled = true;
       const checks = panel.querySelectorAll('.pi-check');
-      const toSave = [];
-      checks.forEach(chk=>{
-        if (chk.checked) toSave.push(state.pendingPreview[+chk.dataset.idx]);
-      });
-      let count = 0;
-      for (const payload of toSave){
-        const created = await insertReminderOnServer(payload);
-        if (created){ state.reminders.push(created); count++; }
-      }
-      renderReminders();
+      const toInsert = [];
+      checks.forEach(chk=>{ if (chk.checked) toInsert.push(state.pendingPreview[+chk.dataset.idx]); });
       panel.classList.add('hidden');
       state.pendingPreview = null;
-      saveBtn.disabled = false;
-      showToast(count ? `Додано ${count} нагадувань` : 'Нічого не збережено (перевір інтернет)');
+      let count = 0;
+      for (const item of toInsert){
+        try{
+          const inserted = await insertReminderRow(item);
+          state.reminders.push(inserted);
+          count++;
+        }catch(e){ console.error(e); showToast(e.message); }
+      }
+      renderReminders();
+      showToast(count ? `Додано ${count} нагадувань` : 'Нічого не вибрано');
     });
   }
 
@@ -1262,8 +1260,8 @@
     try{
       const base64 = await blobToBase64(blob);
       const parsed = await callGeminiWithAudio(base64, mime);
-      const reminders = parsedToReminders(parsed);
-      showParsePreview(reminders, 'voice');
+      const reminders = parsedToReminders(parsed, 'voice');
+      showParsePreview(reminders);
     }catch(err){
       showToast(err.message || 'Помилка розпізнавання');
     }finally{
@@ -1297,8 +1295,8 @@
     btn.textContent = 'AI аналізує...';
     try{
       const parsed = await callGeminiWithText(text);
-      const reminders = parsedToReminders(parsed);
-      showParsePreview(reminders, 'text');
+      const reminders = parsedToReminders(parsed, 'text');
+      showParsePreview(reminders);
       input.value = '';
     }catch(err){
       showToast(err.message || 'Помилка розпізнавання');
@@ -1310,9 +1308,6 @@
 
   /* ============================ WIRE UP ============================ */
   function init(){
-    if (!sb){
-      setSyncStatus('Не вдалося завантажити бібліотеку синхронізації. Перевір інтернет і онови сторінку.', true);
-    }
     document.getElementById('micBtn').addEventListener('click', onMicClick);
     document.getElementById('settingsBtn').addEventListener('click', openSettingsModal);
     document.getElementById('saveSettingsBtn').addEventListener('click', saveSettingsFromModal);
@@ -1338,23 +1333,27 @@
       if (chip) chip.classList.toggle('active');
     });
 
-    loadLocalSettings();
-    requestNotifyPermission();
+    loadSettings();
+    const root = document.getElementById('remindersRoot');
+    root.innerHTML = `<div class="empty-state">Завантаження нагадувань з Supabase…</div>`;
 
-    syncFromServer().then(()=>{
-      checkDue();
-      setInterval(checkDue, 20000);
-    });
-
-    // Живе оновлення, якщо нагадування змінилися з іншого пристрою
-    // або їх позначив сервер сповіщень (notifiedAt).
-    if (sb){
-      sb.channel('reminders-changes')
-        .on('postgres_changes', { event: '*', schema: 'public', table: TABLE }, function(){
-          syncFromServer();
-        })
-        .subscribe();
-    }
+    fetchReminders()
+      .then(list=>{ state.reminders = list; return catchUpMissed(); })
+      .then(()=>{
+        renderReminders();
+        checkDue();
+        setInterval(checkDue, 20000);
+        // Periodically re-sync from Supabase, so changes made by the GitHub Actions
+        // check script (Telegram sends, recurrence advancing) show up here too.
+        setInterval(async ()=>{
+          try{ state.reminders = await fetchReminders(); renderReminders(); }
+          catch(e){ /* silent — keep showing last known state */ }
+        }, 30000);
+      })
+      .catch(e=>{
+        showToast(e.message || 'Помилка завантаження з Supabase');
+        renderReminders();
+      });
   }
 
   init();
